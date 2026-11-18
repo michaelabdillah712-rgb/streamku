@@ -74,6 +74,25 @@ footer{text-align:center;color:#777;font-size:12px;padding:30px}
 .sm{background:#333;border:0;color:#fff;padding:6px 10px;border-radius:4px;cursor:pointer}
 .sm.d{background:#7a1016}
 .msg{margin-top:12px;font-size:14px}.err{color:#ff6b6b}
+
+/* ===== Animasi ===== */
+body{animation:fadeIn .9s ease both}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+.row{opacity:0;transform:translateY(34px);transition:opacity .7s ease,transform .7s ease}
+.row.in{opacity:1;transform:none}
+.row.in .card{animation:cardIn .55s backwards;animation-delay:calc(var(--i,0)*70ms)}
+@keyframes cardIn{from{opacity:0;transform:translateX(24px) scale(.94)}to{opacity:1;transform:none}}
+.card:hover~.card{transform:translateX(16%)}
+.card:has(~.card:hover){transform:translateX(-16%)}
+.hero{overflow:hidden}
+.hero>.hbg{position:absolute;inset:0;max-width:none;z-index:0;background:#222 center/cover no-repeat;animation:kb 22s ease-in-out infinite alternate;will-change:transform}
+@keyframes kb{from{transform:scale(1)}to{transform:scale(1.14) translate(-1.5%,-1%)}}
+.hcon>*{animation:rise .9s cubic-bezier(.2,.7,.2,1) backwards}
+.hcon>:nth-child(1){animation-delay:.25s}.hcon>:nth-child(2){animation-delay:.45s}.hcon>:nth-child(3){animation-delay:.65s}.hcon>:nth-child(4){animation-delay:.85s}.hcon>:nth-child(5){animation-delay:.95s}
+@keyframes rise{from{opacity:0;transform:translateY(28px)}to{opacity:1;transform:none}}
+.frame.on .fbox{animation:pop .35s ease}
+@keyframes pop{from{opacity:0;transform:scale(.94)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}.row{opacity:1;transform:none}}
 </style></head><body>
 <nav id="nav"><div class="logo" onclick="setF('all')">STREAMKU</div><a onclick="setF('all')">Beranda</a><a onclick="setF('fav')">Daftar Saya</a><div class="sp"></div>
 <input id="q" placeholder="Cari judul…" oninput="render()"><button class="ib" onclick="tq()" aria-label="Cari">🔍</button></nav>
@@ -91,14 +110,18 @@ const fmt=d=>{if(!d||!isFinite(d))return'';const h=Math.floor(d/3600),m=Math.rou
 let favs=[];try{favs=JSON.parse(localStorage.getItem('sk_favs')||'[]')}catch(e){}
 const isFav=id=>favs.includes(id),isAdmin=()=>false;
 function saveFavs(){try{localStorage.setItem('sk_favs',JSON.stringify(favs))}catch(e){}}
-async function init(){
- try{const r=await fetch('movies.json',{cache:'no-cache'});if(!r.ok)throw 0;const j=await r.json();
+let lastJ='';
+async function load(){const r=await fetch('movies.json',{cache:'no-cache'});if(!r.ok)throw 0;const x=await r.text();if(x===lastJ)return false;const j=JSON.parse(x);
   movies=j.map(m=>{const o={...m};
    if(m.src==='drive'){o.embed='https://drive.google.com/file/d/'+m.ref+'/preview';o.poster=m.poster||'https://drive.google.com/thumbnail?id='+m.ref+'&sz=w800'}
    else if(m.src==='archive'){if(m.file)o.video='https://archive.org/download/'+m.ref+'/'+encodeURIComponent(m.file);else o.embed='https://archive.org/embed/'+m.ref;o.poster=m.poster||'https://archive.org/services/img/'+m.ref}
-   return o}).sort((a,b)=>(b.added||0)-(a.added||0))}
- catch(e){dbErr='Gagal memuat movies.json.'}
- ready=true;render()}
+   return o}).sort((a,b)=>(b.added||0)-(a.added||0));lastJ=x;return true}
+async function init(){try{await load()}catch(e){dbErr='Gagal memuat movies.json.'}ready=true;render()}
+/* Cek katalog baru tiap 3 menit, diam-diam. Ditunda jika ada film/jendela detail yang sedang terbuka. */
+async function poll(){if(document.hidden||$('playM').classList.contains('on')||$('fr').classList.contains('on'))return;
+ try{if(await load()){dbErr='';render()}}catch(e){}}
+setInterval(poll,180000);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)poll()});
 /* ---------- viewer ---------- */
 function card(m){return `<div class="card" style="${m.poster?`background-image:url(${esc(m.poster)})`:''}" onclick="openFr('${m.id}')">${m.poster?'':`<div class="ph">${esc(m.title)}</div>`}<div class="t">${esc(m.title)}</div></div>`}
 function row(t,l){return l.length?`<div class="row"><h2>${esc(t)}</h2><button class="arr l" onclick="sc(this,-1)">‹</button><div class="sc">${l.map(card).join('')}</div><button class="arr r" onclick="sc(this,1)">›</button></div>`:''}
@@ -111,14 +134,18 @@ function render(){
  if(!movies.length){$('app').innerHTML=`<div class="empty"><h1>Belum ada film</h1><p>Katalog masih kosong.</p>${isAdmin()?'<button class="btn w" onclick="location.hash=\'admin\'">⚙ Buka Panel Admin</button>':''}</div>`;return}
  const l=movies.filter(m=>(!q||m.title.toLowerCase().includes(q))&&(filter!=='fav'||isFav(m.id)));
  const h=l[0];let html='';
- if(h&&!q&&filter==='all')html+=`<div class="hero" style="${h.poster?`background-image:url(${esc(h.poster)})`:''}"><div><h1>${esc(h.title)}</h1><div class="meta">${[h.year,h.genre,fmt(h.dur)].filter(Boolean).map(esc).join(' · ')}</div><p>${esc(h.synopsis||'')}</p><button class="btn w" onclick="openFr('${h.id}')">▶ Putar</button><button class="btn g" onclick="openFr('${h.id}')">ⓘ Info</button></div></div>`;
+ if(h&&!q&&filter==='all')html+=`<div class="hero"><div class="hbg" style="${h.poster?`background-image:url(${esc(h.poster)})`:''}"></div><div class="hcon"><h1>${esc(h.title)}</h1><div class="meta">${[h.year,h.genre,fmt(h.dur)].filter(Boolean).map(esc).join(' · ')}</div><p>${esc(h.synopsis||'')}</p><button class="btn w" onclick="openFr('${h.id}')">▶ Putar</button><button class="btn g" onclick="openFr('${h.id}')">ⓘ Info</button></div></div>`;
  else html+='<div style="height:90px"></div>';
  html+=`<div class="rows" ${(filter!=='all'||q||!h)?'style="margin-top:0"':''}>`;
  if(!l.length)html+='<div class="empty" style="padding-top:10vh"><p>Tidak ada hasil.</p></div>';
  else{html+=row(filter==='fav'?'Daftar Saya':q?'Hasil Pencarian':'Baru Ditambahkan',l);
   if(filter==='all'&&!q){html+=row('Daftar Saya',l.filter(m=>isFav(m.id)));
    const g={};l.forEach(m=>{if(m.genre)(g[m.genre]=g[m.genre]||[]).push(m)});Object.keys(g).forEach(k=>html+=row(k,g[k]))}}
- $('app').innerHTML=html+'</div>'}
+ $('app').innerHTML=html+'</div>';reveal()}
+let io;
+function reveal(){const rows=[...document.querySelectorAll('.row')];rows.forEach(r=>r.querySelectorAll('.card').forEach((c,i)=>c.style.setProperty('--i',Math.min(i,10))));
+ if(io)io.disconnect();if(!('IntersectionObserver' in window)){rows.forEach(r=>r.classList.add('in'));return}
+ io=new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target)}}),{threshold:.1});rows.forEach(r=>io.observe(r))}
 function setF(f){filter=f;render();scrollTo(0,0)}
 function tq(){const q=$('q');q.classList.toggle('on');if(q.classList.contains('on'))q.focus();else{q.value='';render()}}
 
